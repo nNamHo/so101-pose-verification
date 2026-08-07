@@ -1,0 +1,30 @@
+# MoveItPy parameters for the pose-commander milestone.
+# Structure mirrors the repo's so101_moveit_config/config/moveit_py_config.yaml.
+# Differences from the repo's file are marked OURS and are deliberate.
+
+planning_scene_monitor_options:
+  name: "planning_scene_monitor"
+  robot_description: "robot_description"
+  # NAMESPACED — the repo brings the arm up under /follower. Getting this wrong
+  # means the planning scene never learns the current joint state.
+  # NOTE: MoveItCpp IGNORES this and hardcodes "joint_states" — the real fix is
+  # the remappings= kwarg in pose_commander.py. Left here for documentation only.
+  joint_state_topic: "/follower/joint_states"
+  attached_collision_object_topic: "/moveit_cpp/planning_scene_monitor"
+  publish_planning_scene_topic: "/moveit_cpp/publish_planning_scene"
+  monitored_planning_scene_topic: "/moveit_cpp/monitored_planning_scene"
+  wait_for_initial_state_timeout: 5.0   # OURS: repo uses 0.0; we wait so that
+                                        # set_start_state_to_current_state() has data
+
+planning_pipelines:
+  pipeline_names: ["ompl", "pilz_industrial_motion_planner"]
+
+plan_request_params:
+  planning_attempts: 3          # OURS: repo uses 1. More attempts makes the
+                                # near-singular failure mode easier to characterise.
+  planning_pipeline: ompl
+  planner_id: "RRTConnect"      # confirmed against ompl_planning.yaml
+  planning_time: 5.0            # OURS: repo uses 1.0
+  # OURS: repo uses 1.0/1.0. Capped at 30% for first hardware runs — raise once trusted.
+  max_velocity_scaling_factor: 0.3
+  max_acceleration_scaling_factor: 0.3

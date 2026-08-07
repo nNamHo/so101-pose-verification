@@ -1,0 +1,23 @@
+# ROS 2 / colcon build artefacts — never commit these
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Generated URDF — regenerate with:
+#   ros2 run xacro xacro <so101_arm.urdf.xacro> variant:=follower use_ros2_control:=false > so101.urdf
+*.urdf
+
+# ROS runtime logs
+.ros/
