@@ -1,6 +1,6 @@
 # SO-101 Task-Space Pose Commander
 
-Tell a robot arm where to put its gripper, and it goes there — then a **second, independent program checks whether it actually did**.
+Tell a robot arm where to put its gripper, and it goes there, then a **second, independent program checks whether it actually did**.
 
 The idea: "the motion planner said it worked" and "the arm is where I asked" are two different claims. Most code only checks the first. This project checks both.
 
@@ -42,7 +42,7 @@ ros2 run so101_pose_milestone verify_pose
 
 ## Status
 
-Everything works on simulated hardware. Real-hardware runs are blocked by a serial communication problem in the virtual machine — one batched read command times out while single reads succeed every time. Six other hardware issues were found and fixed along the way.
+Everything works on simulated hardware. Real-hardware runs are blocked by a serial communication problem in the virtual machine, one batched read command times out while single reads succeed every time. Six other hardware issues were found and fixed along the way.
 
 ## More detail
 
@@ -52,3 +52,6 @@ Everything works on simulated hardware. Real-hardware runs are blocked by a seri
 
 
 Built with ROS 2 Jazzy, MoveIt 2, OMPL, and `ros2_control`. Kinematics follow *Modern Robotics* (Lynch & Park).
+
+Developed with AI assistance (Claude) for code scaffolding and debugging. 
+Hardware integration, testing, and design decisions are my own.
