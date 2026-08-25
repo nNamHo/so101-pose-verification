@@ -19,6 +19,13 @@ planning_scene_monitor_options:
 planning_pipelines:
   pipeline_names: ["ompl", "pilz_industrial_motion_planner"]
 
+# NOTE on fix_start_state (the start-state clamp for CheckStartStateBounds):
+# it must live in so101_moveit_config's ompl_planning.yaml / pilz yaml, NOT here.
+# MoveItConfigsBuilder.to_dict() merges THIS file last, so a top-level `ompl:`
+# key here REPLACES the whole ompl pipeline config — deleting planning_plugins
+# and crashing MoveItPy with "Planning plugin name is empty". That exact bug
+# cost a day. Only moveit_cpp-level keys belong in this file.
+
 plan_request_params:
   planning_attempts: 3          # OURS: repo uses 1. More attempts makes the
                                 # near-singular failure mode easier to characterise.
@@ -26,5 +33,5 @@ plan_request_params:
   planner_id: "RRTConnect"      # confirmed against ompl_planning.yaml
   planning_time: 5.0            # OURS: repo uses 1.0
   # OURS: repo uses 1.0/1.0. Capped at 30% for first hardware runs — raise once trusted.
-  max_velocity_scaling_factor: 0.3
-  max_acceleration_scaling_factor: 0.3
+  max_velocity_scaling_factor: 0.1
+  max_acceleration_scaling_factor: 0.1

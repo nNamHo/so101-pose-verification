@@ -1,9 +1,12 @@
 joints:
+  # Values synced by name from the 2026-08-20 20:13 LeRobot calibration
+  # (~/.cache/huggingface/lerobot/calibration/robots/so_follower/follower.json).
+  # This is the first calibration with wrist_roll homed at its true neutral.
   shoulder_pan:
     id: 1
-    homing_offset: 530
-    range_min: 866
-    range_max: 3231
+    homing_offset: -1941
+    range_min: 878
+    range_max: 3098
     p_coefficient: 16 
     i_coefficient: 0
     d_coefficient: 32
@@ -12,9 +15,9 @@ joints:
 
   shoulder_lift:
     id: 2
-    homing_offset: -369
-    range_min: 896
-    range_max: 3211
+    homing_offset: -1176
+    range_min: 843
+    range_max: 3229
     p_coefficient: 16
     i_coefficient: 0
     d_coefficient: 32
@@ -23,10 +26,16 @@ joints:
 
   elbow_flex:
     id: 3
-    homing_offset: -98
-    range_min: 866
-    range_max: 3066
-    p_coefficient: 16
+    homing_offset: 1282
+    range_min: 889
+    range_max: 3095
+    # P raised 16 -> 32 -> 48. Gravity-sag tuning, each step verified against
+    # the same target: at P=16 the elbow held ~0.14 rad (8 deg) below its
+    # commanded position under the forearm+wrist load (commanded 2339 counts,
+    # reported ~2430); P=32 halved that to 3.6 deg exactly as a steady-state
+    # P-control error should. 48 targets ~1.5 deg. If the joint buzzes or
+    # oscillates when holding, back off to 40.
+    p_coefficient: 48
     i_coefficient: 0
     d_coefficient: 32
     return_delay_time: 0
@@ -34,20 +43,28 @@ joints:
 
   wrist_flex:
     id: 4
-    homing_offset: 725
-    range_min: 1039
-    range_max: 3121
-    p_coefficient: 16
+    homing_offset: 1642
+    range_min: 801
+    range_max: 3199
+    # P raised 16 -> 32: same gravity-sag reasoning as elbow_flex (~2.6 deg
+    # droop at P=16), lighter load so smaller effect.
+    p_coefficient: 32
     i_coefficient: 0
     d_coefficient: 32
     return_delay_time: 0
     acceleration: 254
 
+  # wrist_roll: first offset taken with the wrist at its TRUE physical neutral
+  # (2026-08-20 recalibration; the previous offset pointed "zero" near the
+  # mechanical stop, which is why the wrist twisted to the stop on every run).
+  # range 0/4095: the roll's travel crosses the encoder wrap point, so LeRobot
+  # records no min/max; the servo enforces no angle window and the URDF limit
+  # constrains the planner instead.
   wrist_roll:
     id: 5
-    homing_offset: 1704
-    range_min: 123
-    range_max: 3955
+    homing_offset: 586
+    range_min: 0
+    range_max: 4095
     p_coefficient: 16
     i_coefficient: 0
     d_coefficient: 32
@@ -56,9 +73,9 @@ joints:
 
   gripper:
     id: 6
-    homing_offset: 1573
-    range_min: 2027
-    range_max: 3483
+    homing_offset: -1493
+    range_min: 1575
+    range_max: 2722
     p_coefficient: 16
     i_coefficient: 0
     d_coefficient: 32

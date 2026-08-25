@@ -48,10 +48,18 @@ TARGETS = [
     {
         # Target 0 — EASY: mid-workspace, far from joint limits and singularities.
         # If this one fails, the pipeline is broken, not the geometry.
+        #
+        # From --fk 0 -0.55 0.45 -0.45 0. Chosen so it can actually play that role:
+        #   - nearest joint limit is 1.20 rad away (no joint anywhere near a stop)
+        #   - 0.446 m radial = 82% of the 0.546 m boundary (not scraping it)
+        #   - pitch 58 deg, i.e. 32 deg clear of the +/-90 gimbal-lock point where
+        #     roll and yaw stop being well-determined
+        # The previous value (0.4409, 0, 0.2148) rpy (154.12, 83.63, 153.99) sat at
+        # pitch 83.63 and 90% of max reach — too marginal to be a sanity check.
 
         "name": "easy_mid_workspace",
-        "position": (0.3531, 0.0000, 0.3775),        # metres, in BASE_FRAME
-        "orientation_rpy_deg": (1.79, 32.66, 3.31), # roll, pitch, yaw (degrees)
+        "position": (0.3078, 0.0, 0.3223),        # metres, in BASE_FRAME
+        "orientation_rpy_deg": (4.54, 58.38, 5.33), # roll, pitch, yaw (degrees)
     },
     {
         # Target 1 — EXTENDED REACH: near the workspace boundary but not on it.

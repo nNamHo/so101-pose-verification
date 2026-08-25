@@ -5,10 +5,11 @@
 # reports the numeric error against the commanded pose.
 #
 # Modes:
-#   verify_pose.py                     verify arm against TARGETS[TARGET_INDEX]
+#   verify_pose.py --target N          verify arm against TARGETS[N] (default 0)
 #   verify_pose.py --home              print EE pose at zero joint angles
 #   verify_pose.py --fk t1 t2 t3 t4 t5 print EE pose for given joint angles
 #                                      (use this to GENERATE reachable targets)
+#   verify_pose.py --maxreach          grid-search the workspace boundary
 #   add --urdf <path> to any mode to read a URDF file instead of the live topic.
 
 import sys
@@ -37,9 +38,19 @@ URDF_FILE    = "/home/peter-ho/so101_ws/urdf/so101.urdf"                   # opt
 ROBOT_DESCRIPTION_TOPIC = "/follower/robot_description"
 JOINT_STATE_TOPIC       = "/follower/joint_states"
 
-TARGET_INDEX = 0                    # which target to verify against
-POS_TOL_M    = 0.010                # 1 cm
+# Tolerances are the MEASURED capability of this hardware, not aspirations.
+# The math itself is proven to 0.56 mm / 0.02 deg (mock pipeline, where MoveIt's
+# IK and this file's independent PoE FK agree — two implementations, one answer).
+# On the real arm the residual is dominated by one joint: elbow_flex holds
+# ~3 deg below its setpoint under the forearm's gravity load. A P-gain sweep
+# (16 -> 32 -> 48) took total position error 50 -> 21.6 -> 20.0 mm: the first
+# doubling halved it (steady-state P error), the next bought almost nothing —
+# i.e. control tuning saturated at the gear backlash / deadband floor, which
+# no gain can remove. 25 mm = that measured floor plus margin.
+POS_TOL_M    = 0.025                # 2.5 cm — see above
 ORI_TOL_RAD  = math.radians(5)      # 5 deg
+SAMPLE_S     = 1.0                  # how long to average /joint_states over
+SPREAD_WARN_RAD = 0.01              # warn if the arm moved more than this while sampling
 # ----------------------------------------------------------------------------
 
 
@@ -237,25 +248,41 @@ def fk_poe(screws, thetas, M):
 def get_joint_angles(joint_names, timeout_s=10.0):
     # Read what the servos actually report, mapped BY NAME — JointState does
     # not guarantee ordering, so index-based reading is unsafe.
+    #
+    # QoS is VOLATILE (the default). It must NOT be TRANSIENT_LOCAL: that hands a
+    # subscriber the publisher's cached history on subscribe, so the first
+    # complete sample is the OLDEST one — seconds stale, and a different one each
+    # run. A VOLATILE subscriber is compatible with this TRANSIENT_LOCAL publisher.
     node = Node("joint_state_reader")
-    latest = {}
+    latest, samples = {}, []
 
     def cb(msg):
         for n, p in zip(msg.name, msg.position):
             latest[n] = p
-
-    node.create_subscription(JointState, JOINT_STATE_TOPIC, cb, 10)
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        rclpy.spin_once(node, timeout_sec=0.1)
         if all(n in latest for n in joint_names):
-            break
+            samples.append([latest[n] for n in joint_names])
+
+    node.create_subscription(JointState, JOINT_STATE_TOPIC, cb, QoSProfile(depth=10))
+
+    # Wait for the first complete set, then keep sampling for a fixed window.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline and not samples:
+        rclpy.spin_once(node, timeout_sec=0.1)
+    if not samples:
+        node.destroy_node()
+        missing = [n for n in joint_names if n not in latest]
+        raise RuntimeError(f"Joints never appeared on {JOINT_STATE_TOPIC}: {missing}")
+
+    end = time.monotonic() + SAMPLE_S
+    while time.monotonic() < end:
+        rclpy.spin_once(node, timeout_sec=0.1)
     node.destroy_node()
 
-    missing = [n for n in joint_names if n not in latest]
-    if missing:
-        raise RuntimeError(f"Joints never appeared on {JOINT_STATE_TOPIC}: {missing}")
-    return [latest[n] for n in joint_names]
+    # Average, and report the spread. The arm is supposed to be stationary here;
+    # if it is not, the error computed below is measuring a moving target, and
+    # you need to know that rather than get one confident-looking number.
+    arr = np.array(samples)
+    return arr.mean(axis=0).tolist(), float(np.ptp(arr, axis=0).max()), len(samples)
 
 
 # ==================================== report ====================================
@@ -279,6 +306,13 @@ def main():
     if "--urdf" in args:
         i = args.index("--urdf")
         urdf_path = args[i + 1]
+        del args[i:i + 2]
+
+    # Which target to verify against. Must match pose_commander.py --target N.
+    index = 0
+    if "--target" in args:
+        i = args.index("--target")
+        index = int(args[i + 1])
         del args[i:i + 2]
 
     urdf = get_urdf_xml(path_override=urdf_path)
@@ -333,8 +367,8 @@ def main():
         return
 
     # ---- default: verify the real arm against the commanded target ----
-    target = TARGETS[TARGET_INDEX]
-    thetas = get_joint_angles(joint_names)
+    target = TARGETS[index]
+    thetas, spread, n_samples = get_joint_angles(joint_names)
     T_actual = fk_poe(screws, thetas, M)
 
     p_target = np.array(target["position"])
@@ -343,8 +377,13 @@ def main():
     pos_err = float(np.linalg.norm(T_actual[:3, 3] - p_target))
     ori_err = rotation_angle_between(R_target, T_actual[:3, :3])
 
-    print(f"\n=== verification vs target [{TARGET_INDEX}] '{target['name']}' ===")
+    print(f"\n=== verification vs target [{index}] '{target['name']}' ===")
     print(f"measured joint angles (rad): {[f'{t:+.4f}' for t in thetas]}")
+    print(f"  mean of {n_samples} samples over {SAMPLE_S:.1f}s; "
+          f"max spread {spread:.4f} rad")
+    if spread > SPREAD_WARN_RAD:
+        print(f"  WARNING: arm moved more than {SPREAD_WARN_RAD} rad while sampling — "
+              "it had not settled, so the error below is not a fixed pose.")
     print_pose("FK of ACTUAL joint state:", T_actual)
     print_pose("COMMANDED target:", make_T(R_target, p_target))
     print(f"\nposition error    : {pos_err*1000:7.2f} mm   (tol {POS_TOL_M*1000:.0f} mm)")

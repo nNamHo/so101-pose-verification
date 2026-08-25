@@ -13,6 +13,7 @@
 
 import os
 import signal
+import sys
 import threading
 import time
 
@@ -36,10 +37,23 @@ EE_LINK        = "gripper_frame_link" # tip_link of the manipulator chain
 # IDENTITY world->base_link transform, so world and base_link are numerically
 # coincident — verify_pose.py computing FK from base_link still agrees.
 BASE_FRAME     = "world"
-TARGET_INDEX   = 0                    # 0 = easy, 1 = extended, 2 = near-singular
-IK_TIMEOUT_S   = 0.2                  # per-attempt IK solve budget
+IK_TIMEOUT_S   = 1.0                  # IK solve budget. Reachable targets solve in
+                                      # 0.05-0.18s; the margin absorbs VM jitter.
+                                      # The near-singular target still fails — it
+                                      # just iterates the full budget first, which
+                                      # is the failure signature being documented.
 RETURN_TO_REST_ON_SIGINT = True       # Ctrl+C -> try to park the arm safely
 # ----------------------------------------------------------------------------
+
+
+def target_index() -> int:
+    # Which of TARGETS[] to command: "--target N", default 0.
+    # A plain flag rather than a ROS parameter, so this matches verify_pose.py
+    # exactly and works whether launched by ros2 launch or run by hand.
+    # ros2 launch appends --ros-args, which this ignores.
+    if "--target" in sys.argv:
+        return int(sys.argv[sys.argv.index("--target") + 1])
+    return 0
 
 
 def build_pose_stamped(target: dict) -> PoseStamped:
@@ -89,8 +103,9 @@ def main():
     rclpy.init()
     logger = get_logger("pose_commander")
 
-    target = TARGETS[TARGET_INDEX]
-    logger.info(f"Target [{TARGET_INDEX}] '{target['name']}' "
+    index = target_index()
+    target = TARGETS[index]
+    logger.info(f"Target [{index}] '{target['name']}' "
                 f"pos={target['position']} rpy_deg={target['orientation_rpy_deg']} "
                 f"frame='{BASE_FRAME}' ee_link='{EE_LINK}'")
 
@@ -126,7 +141,18 @@ def main():
     signal.signal(signal.SIGINT, _sigint)
 
     # ---- STAGE 1: inverse kinematics, as its own reportable step ----
+    # Seed IK from the all-zero configuration, NOT from wherever the arm happens
+    # to rest. Newton-Raphson IK converges or fails depending on its seed: from
+    # the folded rest pose (elbow fully flexed, joints against limits) it failed
+    # 100% of the time, while the same target solved in 0.05s from a raised pose.
+    # Zero is mid-workspace for this arm, and it is exactly the seed the mock
+    # pipeline used (GenericSystem boots at zeros) — the proven-working case.
+    # The PLAN below still starts from the arm's true current state.
     goal_state = current_robot_state(moveit)
+    goal_state.set_joint_group_positions(
+        PLANNING_GROUP,
+        [0.0] * len(goal_state.get_joint_group_positions(PLANNING_GROUP)))
+    goal_state.update()
     t0 = time.monotonic()
     ik_ok = goal_state.set_from_ik(
         PLANNING_GROUP, build_pose_stamped(target).pose, EE_LINK, IK_TIMEOUT_S)
@@ -162,8 +188,9 @@ def main():
     t0 = time.monotonic()
     moveit.execute(plan_result.trajectory, controllers=[])
     logger.info(f"Execution returned after {time.monotonic() - t0:.2f}s. "
-                "NOT proof of convergence — now run verify_pose.py with "
-                f"TARGET_INDEX={TARGET_INDEX}.")
+                "NOT proof of convergence — the controller reports success on "
+                "its own feedback. Now run: verify_pose.py --target "
+                f"{index}")
 
     _hard_exit(moveit)
 

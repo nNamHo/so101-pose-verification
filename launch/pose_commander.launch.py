@@ -27,6 +27,7 @@ def generate_launch_description():
     namespace = LaunchConfiguration("namespace")
     joint_config_file = LaunchConfiguration("joint_config_file")
     usb_port = LaunchConfiguration("usb_port")
+    target_index = LaunchConfiguration("target_index")
 
     use_sim_time = PythonExpression(["'", hardware_type, "' == 'mujoco'"])
 
@@ -111,13 +112,25 @@ def generate_launch_description():
         name="pose_commander",
         output="screen",
         parameters=[moveit_config.to_dict(), {"use_sim_time": use_sim_time}],
+        # OURS: same --target N flag verify_pose.py takes, so the commanded and
+        # the verified target are selected the same way.
+        arguments=["--target", target_index],
     )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument("hardware_type", default_value="real"),
             DeclareLaunchArgument("namespace", default_value="follower"),
-            DeclareLaunchArgument("joint_config_file", default_value=""),
+            # Must default to the real calibration file. With "" the driver falls
+            # back to URDF params, which carry no homing_offset/range — so this
+            # launch and follower_split.launch.py would configure the servos
+            # differently and produce different joint angles for the same pose.
+            DeclareLaunchArgument(
+                "joint_config_file",
+                default_value=os.path.expanduser("~/so101_ws/my_follower_joints.yaml"),
+            ),
+            # Which of TARGETS[] to command. verify_pose.py --target N must match.
+            DeclareLaunchArgument("target_index", default_value="0"),
             # Repo default is /dev/so101_follower (a udev symlink). Use the raw
             # udev symlink (99-so101.rules). Override with usb_port:=/dev/ttyACM0 if absent.
             DeclareLaunchArgument("usb_port", default_value="/dev/so101_follower"),
